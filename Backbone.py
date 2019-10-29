@@ -86,9 +86,14 @@ class SampleableBlock(nn.Module):
     def __init__(self):
         self._previousSampleable = None
 
-    def calculateReceptiveField(self, size, jump, receptive_field, start):
+    def calculateReceptiveField(self, size):
         if (self._previousSampleable):
-            size, jump, receptive_field, start = self._previousSampleable.calculateReceptiveField(size, jump, receptive, start)
+            size, jump, receptive_field, start = self._previousSampleable.calculateReceptiveField(size)
+
+        else: #This is the first layer
+            jump = 1
+            receptive_field = 1
+            start = 0.5
 
         #Calculations used from https://medium.com/mlreview/a-guide-to-receptive-field-arithmetic-for-convolutional-neural-networks-e0f514068807
         new_size = self.getNewSize(size)
