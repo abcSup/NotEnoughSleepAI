@@ -84,7 +84,6 @@ class Backbone(nn.Module):
 
 class SampleableBlock(nn.Module):
     def __init__(self):
-        pass
         self._previousSampleable = None
 
     def calculateReceptiveField(self, size, jump, receptive_field, start):
