@@ -1,8 +1,7 @@
 import copy
 import torch
 import numpy as np
-from ..util.nuscenes_devkit.lyft_dataset_sdk import lyftdataset
-from ..util.nuscenes_devkit.lyft_dataset_sdk.utils.data_classes import LidarPointCloud
+from lyft_dataset_sdk.lyftdataset import LyftDataset
 from .data_channels import LidarChannels, ImageChannels
 from PIL import Image
 from torch.utils.data import Dataset
@@ -11,8 +10,7 @@ from pyquaternion import Quaternion
 
 class LyftDataClass(Dataset):
     def __init__(self, data_path, json_path, verbose=True, map_resolution=0.1):
-        self._lyftdataset = lyftdataset.LyftDataset(data_path, json_path, verbose=verbose, map_resolution=map_resolution)
-        self._lyftexplorer = lyftdataset.LyftDatasetExplorer(self._lyftdataset)
+        self._lyftdataset = LyftDataset(data_path, json_path, verbose=verbose, map_resolution=map_resolution)
 
     def __len__(self):
         return len(self._lyftdataset.scene)
@@ -114,7 +112,9 @@ class Sample:
             coloring = coloring[mask]
 
             #TODO Convert points to sparse lidar map, same size as im
-            #sparse = 
+            sparse = np.zeros((im.size[0], im.size[1]))
+            _p = np.swapaxes(points[:2, :], 0, 1).astype(np.int)
+            sparse[(tuple(_p[:, 0]), tuple(_p[:, 1]))] = depths[mask]
 
             self._mapped_lidar[chn] = (points, mask, coloring, sparse)
 
@@ -178,6 +178,4 @@ class CorrespondingImages():
 
 #TODO Define class for ground truth
 class CorrespondingGroundTruth():
-
-
-
+    pass
