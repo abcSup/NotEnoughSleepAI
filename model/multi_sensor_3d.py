@@ -151,7 +151,7 @@ class Header(nn.Module):
 
         self.anchor_orients = [0, np.pi/2]
         self.score_out = (num_classes + 1) * len(self.anchor_orients)
-        # (t, dx, dy, dz, l, w, h) * 2 anchors
+        # (dx, dy, dz, w, l, h, t) * 2 anchors
         self.bbox_out = 8 * len(self.anchor_orients)
 
         self.conv1 = nn.Conv2d(256, self.score_out + self.bbox_out, kernel_size=1, stride=1, padding=0)

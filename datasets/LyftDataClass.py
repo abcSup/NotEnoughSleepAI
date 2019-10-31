@@ -27,6 +27,9 @@ class LyftDataClass(Dataset):
     def getFromLyftDatapath(self):
         return self._lyftdataset.data_path
 
+    def getFromLyftBoxes(self, sample_data_token):
+        return self._lyftdataset.getBoxes(sample_data_token)
+
 
 class Sample:
     def __init__(self, lyftdataclass, sample_record, dense=False):
@@ -50,15 +53,32 @@ class Sample:
             images[chn] = (im, cam)
         self.__init_Images__(images)
 
+        #Initialize mapped pointclouds
+        self.map_pointcloud_to_images()
+
+        #Initialize CorrespondingGroundTruth
+        sample_data_token = sample_record["data"]["token"]
+        boxes = self._lyftdataclass.getFromLyftBoxes(sample_data_token)
+        sparse = {chn: self._mapped_lidar[chn]["SPARSE"] for chn in self._mapped_lidar.keys()}
+        self.__init__GroundTruth(boxes, sparse)
+
     def __init_LidarPointCloud__(self, pcl_path, pointsensor):
         self.corresponding_lidar = CorrespondingLidarPointCloud(pcl_path, pointsensor)
 
     def __init_Images__(self, images):
         self.corresponding_images = CorrespondingImages(images)
 
-    def getMappedLidar(self, chn):
+    def __init__GroundTruth__(self, boxes, sparse):
+        self.corresponding_groundtruth = CorrespondingGroundTruth(boxes, sparse)
+
+    def getMappedLidar(self, chn, key=None):
         assert ImageChannels.hasValue(chn), "Invalid channel, must be a value in ImageChannels"
         assert self._mapped_lidar, "Call map_pointcloud_to_images() first"
+
+        if key:
+            return self._mapped_lidar[chn][key]
+        else:
+            return self._mapped_lidar[chn]
 
     #Ported from nuscenes-devkit
     def map_pointcloud_to_images(self):
@@ -111,12 +131,11 @@ class Sample:
             points = points[:, mask]
             coloring = coloring[mask]
 
-            #TODO Convert points to sparse lidar map, same size as im
             sparse = np.zeros((im.size[0], im.size[1]))
             _p = np.swapaxes(points[:2, :], 0, 1).astype(np.int)
             sparse[(tuple(_p[:, 0]), tuple(_p[:, 1]))] = depths[mask]
 
-            self._mapped_lidar[chn] = (points, mask, coloring, sparse)
+            self._mapped_lidar[chn] = {'POINTS': points, 'MASK': mask, 'COLORING': coloring, 'SPARSE': sparse}
 
 class CorrespondingLidarPointCloud():
     def __init__(self, pcl_path, pointsensor):
@@ -178,4 +197,13 @@ class CorrespondingImages():
 
 #TODO Define class for ground truth
 class CorrespondingGroundTruth():
-    pass
+    def __init__(self, boxes, sparse):
+        self._boxes = boxes
+        self._sparse = sparse
+
+    def getBoxes(self):
+        return boxes
+
+    def getSparse(self, chn):
+        assert assert ImageChannels.hasValue(chn), "Invalid channel, must be a value in ImageChannels"
+        return self._sparse[chn]

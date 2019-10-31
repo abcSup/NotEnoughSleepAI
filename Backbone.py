@@ -3,84 +3,92 @@ from datasets.data_channels import LidarChannels, ImageChannels
 
 class Backbone(nn.Module):
     
-    def __init__(self, bev_height, img_chn, kNN=1):
+    def __init__(self, bev_height, img_chn, num_classes):
         super(Backbone, self).__init__()
         #NOTE: FOR BEV_BLOCK, ALL CONV2D MUST BE DONE WITH GROUPS=IN_CHN, AND IN_CHN=OUT_CHN
         #       THIS IS TO MAINTAIN BEV POINTS CORRESPONDENCE, HEIGHT-WISE
         #BLOCK1
-        self.bev_block1 = BEVBlock(in_chn=bev_height, out_chn=bev_height)
-        self.fusion_block1 = DenseFusionBlock(k=kNN)
-        self.image_block1 = ImageBlock(in_chn=img_chn, out_chn=64)
+        self.bev_block1 = BEVBlock(bev_height, 64, 1, 1)
+        self.fusion_block1 = DenseFusionBlock()
+        self.image_block1 = ImageBlock(img_chn, 64, 1, 1)
+        self.depth_block1 = DepthBlock(img_chn, 64, 1, 1)
 
         #BLOCK2
-        self.bev_block2 = BEVBlock(in_chn=bev_height, out_chn=bev_height).registerPreviousSampleable(self.bev_block1)
-        self.fusion_block2 = DenseFusionBlock(k=kNN)
-        self.image_block2 = ImageBlock(in_chn=64, out_chn=128).registerPreviousSampleable(self.image_block1)
+        self.bev_block2 = BEVBlock(64, 128, 1, 1).registerPreviousSampleable(self.bev_block1)
+        self.fusion_block2 = DenseFusionBlock()
+        self.image_block2 = ImageBlock(64, 128, 1, 1).registerPreviousSampleable(self.image_block1)
+        self.depth_block2 = DepthBlock(64, 128, 1, 1).registerPreviousSampleable(self.depth_block1)
 
         #BLOCK3
-        self.bev_block3 = BEVBlock(in_chn=bev_height, out_chn=bev_height).registerPreviousSampleable(self.bev_block2)
-        self.fusion_block3 = DenseFusionBlock(k=kNN)
-        self.image_block3 = ImageBlock(in_chn=128, out_chn=256).registerPreviousSampleable(self.image_block2)
+        self.bev_block3 = BEVBlock(128, 256, 1, 1).registerPreviousSampleable(self.bev_block2)
+        self.fusion_block3 = DenseFusionBlock()
+        self.image_block3 = ImageBlock(128, 256, 1, 1).registerPreviousSampleable(self.image_block2)
+        self.depth_block3 = DepthBlock(128, 256, 1, 1).registerPreviousSampleable(self.depth_block2)
 
         #BLOCK4
-        self.bev_block4 = BEVBlock(in_chn=bev_height, out_chn=bev_height).registerPreviousSampleable(self.bev_block3)
-        self.fusion_block4 = DenseFusionBlock(k=kNN)
-        self.image_block4 = ImageBlock(in_chn=256, out_chn=512).registerPreviousSampleable(self.image_block3)
+        self.bev_block4 = BEVBlock(256, 512, 1, 1).registerPreviousSampleable(self.bev_block3)
+        self.fusion_block4 = DenseFusionBlock()
+        self.image_block4 = ImageBlock(256, 512, 1, 1).registerPreviousSampleable(self.image_block3)
+        self.depth_block4 = DepthBlock(256, 512, 1, 1).registerPreviousSampleable(self.depth_block3)
 
         #FINAL OUTPUT BLOCKS
-        self.bev_block5 = UpConvBlock(in_chn=bev_height, out_chn=bev_height, factor=4)
-        self.image_block5 = UpConvBlock(in_chn=512, out_chn=512, factor=4)
+        self.bev_block5 = UpConvBlock(512, 512, factor=4)
+        self.image_block5 = UpConvBlock(512, 512, factor=4)
 
-    def forward(self, sample):
+        #HEADER
+        self.header = Header(num_classes)
+
+    def forward(self, sample, img_chn):
+        assert ImageChannels.hasValue(chn), "Invalid channel, must be a value in ImageChannels"
 
         #Generate neccesary data
-        sample.map_pointcloud_to_images()
         sample.corresponding_lidar.voxelize()
-        sample.corresponding_lidar.generateKNN()
-        bev_input = sample.corresponding_lidar.getOccupancyMatrix()
+        im_input = sample.corresponding_images.getImage(img_chn)
+        sparse_input = sample.getMappedLidar(img_chn, 'SPARSE')
+        bev_input = sample.corresponding_lidar.getOccupancyMatrix() 
+
+        #Get X, Y dimensions of BEV (for pixel correspondence) MUST BE SQUARE
+        bev_size = bev_input.shape[2:]
+        im_size = im_input.shape[2:]
+        sparse_size = sparse_input.shape[2:]
+        assert bev_size[0] == bev_size[1], "BEV slices (of size {}) must be squares (calculateReceptiveField() makes this assumption)".format(bev_size)
+        assert im_size == sparse_size, "Image (of size {}) != sparse depth map (of size {})".format(im_input.shape, sparse_input.shape)
+
+        #im_sparse_concat_input =
 
         #TODO Make sure all inputs are transformed into tensor before passing into NN
-        #BLOCK1
-        im_input = {}
-        im1 = {}
-        for chn in ImageChannels:
-            sparse_input = sample.getMappedLidar(chn)
-            im_input[chn] = sample.corresponding_images.getImage(chn)
-            im1[chn] = self.image_block1(im_input[chn], sparse_input)
-
-        fused1 = self.fusion_block1(im_input, bev_input, sample)
+        #TODO Upsampling layers
+        #BLOCK1     
+        im1 = self.image_block1(im_sparse_concat_input)
+        sparse1 = self.depth_block1(sparse_input)
+        fused1 = self.fusion_block1(im_input, sparse_input, bev_input)
         bev1 = self.bev_block1(fused1)
 
         #BLOCK2
-        im2 = {}
-        for chn in ImageChannels:
-            im2[chn] = self.image_block2(im1[chn])
-
-        fused2 = self.fusion_block2(im1, bev1, sample)
+        im2 = self.image_block2(im1)
+        sparse2 = self.depth_block2(sparse1)
+        fused2 = self.fusion_block2(im1, sparse1, bev1)
         bev2 = self.bev_block2(fused2)
 
         #BLOCK3
-        im3 = {}
-        for chn in ImageChannels:
-            im3[chn] = self.image_block3(im2[chn])
-
-        fused3 = self.fusion_block3(im2, bev2, sample)
+        im3 = self.image_block3(im2)
+        sparse3 = self.depth_block3(sparse2)
+        fused3 = self.fusion_block3(im2, sparse2, bev2)
         bev3 = self.bev_block3(fused3)
 
         #BLOCK4
-        im4 = {}
-        for chn in ImageChannels:
-            im4[chn] = self.image_block4(im3[chn])
-        fused4 = self.fusion_block4(im3, bev3, sample)
+        im4 = self.image_block4(im3)
+        sparse4 = self.depth_block4(sparse3)
+        fused4 = self.fusion_block4(im3, sparse3, bev3)
         bev4 = self.bev_block4(fused4)
 
-
-        im5 = {}
-        for chn in ImageChannels:
-            im5[chn] = self.image_block5(im4[chn])
+        im5 = self.image_block5(im4)
         bev5 = self.bev_block5(bev4)
 
-        return im5, bev5
+        header_out = self.header(bev5)
+
+        #TODO 3D Bounding-box refinement 
+        return im5, bev5, header_out
 
 class SampleableBlock(nn.Module):
     def __init__(self):
@@ -90,7 +98,7 @@ class SampleableBlock(nn.Module):
         if (self._previousSampleable):
             size, jump, receptive_field, start = self._previousSampleable.calculateReceptiveField(size)
 
-        else: #This is the first layer
+        else: #This is the first layer, use initial values
             jump = 1
             receptive_field = 1
             start = 0.5
@@ -166,14 +174,110 @@ class SampleableBlock(nn.Module):
 
 
 #TODO Modularize every block
+def conv3x3(in_chn, out_chn, stride=1):
+    return nn.Conv2d(in_chn, out_chn, kernel_size=3, stride=stride, padding=1, bias=False)
+
+
+def conv1x1(in_chn, out_chn, stride=1):
+    return nn.Conv2d(in_chn, out_chn, kernel_size=1, stride=stride, bias=False)
+
 class BEVBlock(SampleableBlock):
-    def __init__(self):
-        pass
+    def __init__(self, in_chn, dim_size, num_blocks, stride=1):
+        super(SampleableBlock, self).__init__()
+
+        strides = [stride] + [1] * (num_blocks - 1)
+        layers = []
+        for stride in strides:
+            layers += [BasicBlock(in_chn, dim_size, stride)]
+            in_chn = dim_size * 1
+        
+        self._model = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self._model(x)
 
 class ImageBlock(SampleableBlock):
-    def __init__(self):
-        pass
+    def __init__(self, in_chn, dim_size, num_blocks, stride=1):
+        super(SampleableBlock, self).__init__()
+
+        strides = [stride] + [1] * (num_blocks - 1)
+        layers = []
+        for stride in strides:
+            layers += [BasicBlock(in_chn, dim_size, stride)]
+            in_chn = dim_size * 1
+        
+        self._model = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self._model(x)
+
+class DepthBlock(SampleableBlock):
+    def __init__(self, in_chn, dim_size, num_blocks, stride=1):
+        super(SampleableBlock, self).__init__()
+
+        strides = [stride] + [1] * (num_blocks - 1)
+        layers = []
+        for stride in strides:
+            layers += [BasicBlock(in_chn, dim_size, stride)]
+            in_chn = dim_size * 1
+        
+        self._model = nn.Sequential(*layers)
+
+    def forward(self, x):
+        return self._model(x)
 
 class UpConvBlock(SampleableBlock):
     def __init__(self):
         pass
+
+class Header(nn.Module):
+    def __init__(self, num_classes):
+        super(DetectionHeader, self).__init__()
+
+        self.anchor_orients = [0, np.pi/2]
+        self.score_out = (num_classes + 1) * len(self.anchor_orients)
+        # (t, dx, dy, dz, l, w, h) * 2 anchors
+        self.bbox_out = 8 * len(self.anchor_orients)
+
+        self.conv1 = nn.Conv2d(256, self.score_out + self.bbox_out, kernel_size=1, stride=1, padding=0)
+
+    def forward(self, x):
+        clsscore_bbox = self.conv1(x)
+        cls_score, bbox = torch.split(clsscore_bbox, [self.score_out, self.bbox_out], dim=1)
+
+        return cls_score, bbox
+
+class BasicBlock(nn.Module):
+    def __init__(self, in_chn, dim_size, stride=1):
+        super(BasicBlock, self).__init__()
+
+        self.conv1 = conv3x3(in_chn, dim_size, stride)
+        self.bn1 = nn.BatchNorm2d(dim_size)
+        self.conv2 = conv3x3(dim_size, dim_size * 1)
+        self.bn2 = nn.BatchNorm2d(dim_size)
+        self.activation = nn.ReLU(inplace=True)
+
+        self.downsample = None
+        if stride == 2:
+            layers = []
+            layers += [conv1x1(in_chn, dim_size, stride)]
+            layers += [nn.BatchNorm2d(dim_size)]
+            self.downsample = nn.Sequential(*layers)
+
+    def forward(self, x):
+        identity = x
+
+        out = self.conv1(x)
+        out = self.bn1(out)
+        out = self.activation(out)
+
+        out = self.conv2(out)
+        out = self.bn2(out)
+
+        if self.downsample is not None:
+            identity = self.downsample(identity)
+
+        out += identity
+        out = self.activation(out)
+
+        return out
