@@ -5,8 +5,6 @@ class Backbone(nn.Module):
     
     def __init__(self, bev_height, img_chn, num_classes):
         super(Backbone, self).__init__()
-        #NOTE: FOR BEV_BLOCK, ALL CONV2D MUST BE DONE WITH GROUPS=IN_CHN, AND IN_CHN=OUT_CHN
-        #       THIS IS TO MAINTAIN BEV POINTS CORRESPONDENCE, HEIGHT-WISE
         #BLOCK1
         self.bev_block1 = BEVBlock(bev_height, 64, 1, 1)
         self.fusion_block1 = DenseFusionBlock()
@@ -14,22 +12,22 @@ class Backbone(nn.Module):
         self.depth_block1 = DepthBlock(img_chn, 64, 1, 1)
 
         #BLOCK2
-        self.bev_block2 = BEVBlock(64, 128, 1, 1).registerPreviousSampleable(self.bev_block1)
+        self.bev_block2 = BEVBlock(64, 128, 1, 1)
         self.fusion_block2 = DenseFusionBlock()
-        self.image_block2 = ImageBlock(64, 128, 1, 1).registerPreviousSampleable(self.image_block1)
-        self.depth_block2 = DepthBlock(64, 128, 1, 1).registerPreviousSampleable(self.depth_block1)
+        self.image_block2 = ImageBlock(64, 128, 1, 1)
+        self.depth_block2 = DepthBlock(64, 128, 1, 1)
 
         #BLOCK3
-        self.bev_block3 = BEVBlock(128, 256, 1, 1).registerPreviousSampleable(self.bev_block2)
+        self.bev_block3 = BEVBlock(128, 256, 1, 1)
         self.fusion_block3 = DenseFusionBlock()
-        self.image_block3 = ImageBlock(128, 256, 1, 1).registerPreviousSampleable(self.image_block2)
-        self.depth_block3 = DepthBlock(128, 256, 1, 1).registerPreviousSampleable(self.depth_block2)
+        self.image_block3 = ImageBlock(128, 256, 1, 1)
+        self.depth_block3 = DepthBlock(128, 256, 1, 1)
 
         #BLOCK4
-        self.bev_block4 = BEVBlock(256, 512, 1, 1).registerPreviousSampleable(self.bev_block3)
+        self.bev_block4 = BEVBlock(256, 512, 1, 1)
         self.fusion_block4 = DenseFusionBlock()
-        self.image_block4 = ImageBlock(256, 512, 1, 1).registerPreviousSampleable(self.image_block3)
-        self.depth_block4 = DepthBlock(256, 512, 1, 1).registerPreviousSampleable(self.depth_block3)
+        self.image_block4 = ImageBlock(256, 512, 1, 1)
+        self.depth_block4 = DepthBlock(256, 512, 1, 1)
 
         #FINAL OUTPUT BLOCKS
         self.bev_block5 = UpConvBlock(512, 512, factor=4)
@@ -54,10 +52,9 @@ class Backbone(nn.Module):
         assert bev_size[0] == bev_size[1], "BEV slices (of size {}) must be squares (calculateReceptiveField() makes this assumption)".format(bev_size)
         assert im_size == sparse_size, "Image (of size {}) != sparse depth map (of size {})".format(im_input.shape, sparse_input.shape)
 
-        #im_sparse_concat_input =
+        im_sparse_concat_input = torch.cat((im_input, bev_input), axis=1)
 
-        #TODO Make sure all inputs are transformed into tensor before passing into NN
-        #TODO Upsampling layers
+        #TODO Initial and final conv layers
         #BLOCK1     
         im1 = self.image_block1(im_sparse_concat_input)
         sparse1 = self.depth_block1(sparse_input)
@@ -88,7 +85,7 @@ class Backbone(nn.Module):
         header_out = self.header(bev5)
 
         #TODO 3D Bounding-box refinement 
-        return im5, bev5, header_out
+        return im5, header_out
 
 class SampleableBlock(nn.Module):
     def __init__(self):
@@ -173,7 +170,6 @@ class SampleableBlock(nn.Module):
         self._previousSampleable = prev_sampleable
 
 
-#TODO Modularize every block
 def conv3x3(in_chn, out_chn, stride=1):
     return nn.Conv2d(in_chn, out_chn, kernel_size=3, stride=stride, padding=1, bias=False)
 

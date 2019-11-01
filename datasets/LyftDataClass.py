@@ -71,14 +71,22 @@ class Sample:
     def __init__GroundTruth__(self, boxes, sparse):
         self.corresponding_groundtruth = CorrespondingGroundTruth(boxes, sparse)
 
-    def getMappedLidar(self, chn, key=None):
+    #TODO Make sure all inputs are transformed into tensor before passing into NN, for all as_tensor arguments
+    def getMappedLidar(self, chn, key=None, as_tensor=True):
         assert ImageChannels.hasValue(chn), "Invalid channel, must be a value in ImageChannels"
         assert self._mapped_lidar, "Call map_pointcloud_to_images() first"
 
         if key:
-            return self._mapped_lidar[chn][key]
+            out = self._mapped_lidar[chn][key]
+            if as_tensor:
+                out = torch.tensor(out)
         else:
-            return self._mapped_lidar[chn]
+            out = self._mapped_lidar[chn]
+            if as_tensor:
+                for key, value in out.items():
+                out[key] = torch.tensor(value)
+
+        return out
 
     #Ported from nuscenes-devkit
     def map_pointcloud_to_images(self):
@@ -149,8 +157,12 @@ class CorrespondingLidarPointCloud():
     def getPointsensor(self):
         return self._pointsensor
 
-    def getOccupancyMatrix(self):
+    def getOccupancyMatrix(self, as_tensor=True):
         assert self._occupancy, "Call voxelize() first"
+
+        if as_tensor:
+            return torch.tensor(self._occupancy)
+
         return self._occupancy
 
     def getNeighbors(self):
@@ -186,16 +198,18 @@ class CorrespondingImages():
     def __init__(self, images):
         self._images = images
 
-    def getImage(self, chn):
+    def getImage(self, chn, as_tensor=True):
         assert ImageChannels.hasValue(chn), "Invalid channel, must be a value in ImageChannels"
+
+        if as_tensor:
+            return torch.tensor(self._images[chn][0])
+
         return self._images[chn][0]
 
     def getCam(self, chn):
         assert ImageChannels.hasValue(chn), "Invalid channel, must be a value in ImageChannels"
         return self._images[chn][1]
 
-
-#TODO Define class for ground truth
 class CorrespondingGroundTruth():
     def __init__(self, boxes, sparse):
         self._boxes = boxes
@@ -204,6 +218,10 @@ class CorrespondingGroundTruth():
     def getBoxes(self):
         return boxes
 
-    def getSparse(self, chn):
+    def getSparse(self, chn, as_tensor=True):
         assert assert ImageChannels.hasValue(chn), "Invalid channel, must be a value in ImageChannels"
+
+        if as_tensor:
+            return torch.tensor(self._sparse[chn])
+
         return self._sparse[chn]

@@ -42,13 +42,28 @@ class DenseFusionBlock(nn.Module):
             An instance of the Sample class containing image and bev
     
     Return(s):
-        fused_feature: (N * 2C * H * W) image + BEV feature (concatenated)
+        fused_feature: (N * C * H * W) image + BEV feature (concatenated)
     '''
     def forward(self, image, depth, bev):
+        #TODO Optimize
+        n_points = []
+        #UNPROJECT IMAGE TO METRIC 3D SPACE
+        for n in range(image.shape[0]):
+            points = []
+            for x, y in zip(*np.where(depth[n, 0, :, :] > 0)):
+                #cx_d, cy_d, fx_y, fx_d are the intrinsics
+                P3D_x = (x - cx_d) * depth[n, 0, x, y] / fx_d
+                P3D_y = (y - cy_d) * depth[n, 0, x, y] / fy_d
+                P3D_z = depth[n, 0, x, y]
 
-        #MAP IMAGE TO BEV, THEN CONCATENATE
+                points += [(np.array(P3D_x, P3D_y, P3D_z), (np.array(image[n, :, x, y])))] #Get all points and their corresponding RGB values
+
+            n_points += points
 
 
+        #TRANSFORM TO LIDAR SENSOR COORDINATES
+
+        #SUM PIXEL-WISE WITH BEV FEATURE
 
         return fused_feature
 
