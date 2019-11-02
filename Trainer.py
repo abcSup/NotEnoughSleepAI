@@ -28,8 +28,15 @@ class Trainer(nn.Module):
         for chn in ImageChannels:
             channel = chn.value
 
-            sparse_out, transformed_bboxes, pred_class_scores = self.model(sample, channel)
-            loss += self.multi_task_loss(sample, sparse_out, transformed_bboxes, pred_class_scores, channel)
+            sparse_out, anchor_out1, anchor_out2 = self.model(sample, channel)
+
+            pred_bboxes1, pred_class_scores1 = anchor_out1
+            pred_bboxes2, pred_class_scores2 = anchor_out2
+
+            pred_bboxes = torch.cat((pred_bboxes1, pred_bboxes2))
+            pred_class_scores = torch.cat((pred_class_scores1, pred_class_scores2))
+
+            loss += self.multi_task_loss(sample, sparse_out, pred_bboxes, pred_class_scores, channel)
 
         self.model.zero_grad()
         loss.backward()

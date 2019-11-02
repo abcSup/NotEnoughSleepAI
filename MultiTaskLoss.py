@@ -17,6 +17,7 @@ class MultiTaskLoss(nn.Module):
         gt_bboxes = sample.corresponding_groundtruth.getBoxes()
         gt_sparse = sample.corresponding_groundtruth.getSparse(img_chn)
 
+        #TODO KDTree to improve efficiency? Right now worst-case = O(n^2)
         for gt_bbox in gt_bboxes:
             closest_ind = self.getClosestBBox(pred_bboxes, gt_bbox.center)
             pred_bbox = pred_bboxes[closest_ind] #Corresponding output

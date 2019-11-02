@@ -230,18 +230,19 @@ class Header(nn.Module):
     def __init__(self, num_classes):
         super(DetectionHeader, self).__init__()
 
-        self.anchor_orients = [0, np.pi/2]
-        self.score_out = (num_classes + 1) * len(self.anchor_orients)
-        # (t, dx, dy, dz, l, w, h) * 2 anchors
+        self.anchor_orients = torch.tensor([0.0, np.pi/2])
+        self.objectness_out = 1 * len(self.anchor_orients)
+        self.score_out = (num_classes) * len(self.anchor_orients)
+        # (t, x, y, z, l, w, h) * 2 anchors
         self.bbox_out = 8 * len(self.anchor_orients)
 
-        self.conv1 = nn.Conv2d(256, self.score_out + self.bbox_out, kernel_size=1, stride=1, padding=0)
+        self.conv1 = nn.Conv2d(256, self.objectness_out +self.score_out + self.bbox_out, kernel_size=1, stride=1, padding=0)
 
     def forward(self, x):
         clsscore_bbox = self.conv1(x)
-        cls_score, bbox = torch.split(clsscore_bbox, [self.score_out, self.bbox_out], dim=1)
+        objectness_score1, objectness_score2, cls_score1, cls_score2, bbox1, bbox2 = torch.split(clsscore_bbox, [self.objectness_out/2, self.objectness_out/2, self.score_out/2, self.score_out/2, self.bbox_out/2, self.bbox_out/2], dim=1)
 
-        return cls_score, bbox
+        return objectness_score1, objectness_score2, cls_score1, cls_score2, bbox1, bbox2, self.anchor_orients
 
 class BasicBlock(nn.Module):
     def __init__(self, in_chn, dim_size, stride=1):
